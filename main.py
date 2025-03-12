@@ -2,10 +2,11 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 import re
 import os
+from difflib import get_close_matches
 
 app = FastAPI()
 
-# Enable CORS
+# Enable CORS for frontend requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,9 +18,8 @@ app.add_middleware(
 # Load movie links from file
 def load_movie_links():
     movies = {}
-    file_path = "cleaned_links.txt"  # Ensure this file exists in the same directory as main.py
+    file_path = "cleaned_links.txt"  # Make sure this file is in the same directory
 
-    # Check if the file exists
     if not os.path.exists(file_path):
         print("❌ ERROR: cleaned_links.txt NOT FOUND!")
         return {}
@@ -31,24 +31,31 @@ def load_movie_links():
             match = re.match(r"(.+?)\((\d{4})\) - (http.+)", line)
             if match:
                 title, year, url = match.groups()
-                movies[(title.lower().strip(), year.strip())] = url
+                title = title.lower().strip()
+                movies[(title, year.strip())] = url
 
     print(f"✅ Loaded {len(movies)} movies!")  # Debugging info
-
-    if len(movies) > 0:
-        first_movie = list(movies.keys())[0]
-        print(f"🎬 First Movie: {first_movie} → {movies[first_movie]}")
-
     return movies
 
 movies_db = load_movie_links()
 
-@app.get("/get_movie_link")
-async def get_movie_link(name: str, year: str):
-    key = (name.lower().strip(), year.strip())
-    print(f"🔍 Searching for: {key}")  # Debugging info
+def find_best_match(user_input, movie_list):
+    """Finds the best matching movie title from the list."""
+    matches = get_close_matches(user_input.lower(), [title for title, _ in movie_list], n=1, cutoff=0.5)
+    return matches[0] if matches else None
 
-    if key in movies_db:
-        return {"title": name, "year": year, "link": movies_db[key]}
+@app.get("/get_movie_link")
+async def get_movie_link(name: str = Query(...), year: str = Query(...)):
+    name = name.lower().strip()
+    year = year.strip()
+
+    # Try exact match first
+    if (name, year) in movies_db:
+        return {"title": name, "year": year, "link": movies_db[(name, year)]}
+
+    # Try fuzzy matching (find closest match)
+    best_match = find_best_match(name, movies_db.keys())
+    if best_match and (best_match, year) in movies_db:
+        return {"title": best_match, "year": year, "link": movies_db[(best_match, year)]}
 
     return {"error": "Movie not found"}
