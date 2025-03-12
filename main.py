@@ -40,13 +40,7 @@ async def get_movie_link(name: str = Query(...), year: str = Query(...)):
     key = (name.lower().strip(), year.strip())
     print(f"🔍 Searching for: {key}")  # Debugging info
 
-    # Try exact match first
     if key in movies_db:
         return {"title": name, "year": year, "link": movies_db[key]}
-
-    # Try fuzzy matching (partial search)
-    for (movie_title, movie_year), movie_url in movies_db.items():
-        if name.lower() in movie_title and year == movie_year:
-            return {"title": movie_title, "year": movie_year, "link": movie_url}
 
     return {"error": "Movie not found"}
